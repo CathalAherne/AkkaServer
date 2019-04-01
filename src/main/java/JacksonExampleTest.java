@@ -15,8 +15,10 @@ import akka.stream.javadsl.Flow;
 //import com.fasterxml.jackson.annotation.JsonCreator;
 //import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -31,8 +33,15 @@ import static akka.http.javadsl.server.PathMatchers.longSegment;
 public class JacksonExampleTest extends AllDirectives {
 
     Map<Integer, String> postedFiles = new HashMap<>();
+    BufferedWriter fileWriter;
+
+    public JacksonExampleTest() throws IOException{
+        fileWriter = new BufferedWriter(new FileWriter("Database/File.txt"));
+        fileWriter.write("wdewdwedewdewdedwedewdwd");
+    }
 
     public static void main(String[] args) throws Exception {
+
         // boot up server using the route as defined below
         ActorSystem system = ActorSystem.create("routes");
 
@@ -65,9 +74,11 @@ public class JacksonExampleTest extends AllDirectives {
         return CompletableFuture.completedFuture(Done.getInstance());
     }
 
-    private Route createRoute() {
 
-        return concat(
+
+    private Route createRoute() throws IOException{
+
+        return concat (
                 get(() ->
                         pathPrefix("item", () ->
                                 path(longSegment(), (Long id) -> {
@@ -80,7 +91,12 @@ public class JacksonExampleTest extends AllDirectives {
                 post(() ->
                         path("create-order", () ->
                                 entity(Jackson.unmarshaller(String.class), order -> {
-                                    //CompletionStage<Done> futureSaved = saveOrder(order);
+                                    try{
+                                        fileWriter.write("IN POST PATH");
+                                    }catch(IOException e){
+                                        complete(e.getMessage());
+
+                                    }CompletionStage<Done> futureSaved = saveOrder(order);
                                     postedFiles.put(1, order);
                                     return complete("order created");
                                 })))
