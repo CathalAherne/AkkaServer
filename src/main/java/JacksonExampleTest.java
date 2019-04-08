@@ -5,19 +5,25 @@ import akka.http.javadsl.ConnectHttp;
 import akka.http.javadsl.Http;
 import akka.http.javadsl.ServerBinding;
 import akka.http.javadsl.marshallers.jackson.Jackson;
+import akka.http.javadsl.model.ContentTypes;
 import akka.http.javadsl.model.HttpRequest;
 import akka.http.javadsl.model.HttpResponse;
 import akka.http.javadsl.model.StatusCodes;
 import akka.http.javadsl.server.AllDirectives;
+import akka.http.javadsl.server.Complete;
 import akka.http.javadsl.server.Route;
+import akka.http.javadsl.server.directives.RouteAdapter;
 import akka.stream.ActorMaterializer;
 import akka.stream.javadsl.Flow;
+import com.fasterxml.jackson.databind.JsonNode;
 //import com.fasterxml.jackson.annotation.JsonCreator;
 //import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.IOException;
+import javax.swing.text.Segment;
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -33,11 +39,12 @@ import static akka.http.javadsl.server.PathMatchers.longSegment;
 public class JacksonExampleTest extends AllDirectives {
 
     Map<Integer, String> postedFiles = new HashMap<>();
-    BufferedWriter fileWriter;
+    Writer fileWriter;
+    String fileLocation = "Database";
+    private static int uuid = 0;
 
-    public JacksonExampleTest() throws IOException{
-        fileWriter = new BufferedWriter(new FileWriter("Database/File.txt"));
-        fileWriter.write("wdewdwedewdewdedwedewdwd");
+    public JacksonExampleTest() throws IOException {
+
     }
 
     public static void main(String[] args) throws Exception {
@@ -69,73 +76,49 @@ public class JacksonExampleTest extends AllDirectives {
     }
 
     // (fake) async database query api
-    private CompletionStage<Done> saveOrder(final String order) {
-        postedFiles.put(1, order);
+    private CompletionStage<Done> saveOrder(final String order, String uuid) throws IOException{
+        Path path = Paths.get(fileLocation + "/" + uuid);
+        Files.write(path, order.getBytes());
         return CompletableFuture.completedFuture(Done.getInstance());
+    }
+
+    private RouteAdapter getResult(Path path){
+        RouteAdapter complete = null;
+        try {
+            complete = complete(StatusCodes.ACCEPTED, "" + Files.readAllLines(path));
+        } catch (IOException e) {
+            complete = complete(StatusCodes.BAD_REQUEST, "There is no file at this location");
+        }
+        return complete;
     }
 
 
 
     private Route createRoute() throws IOException{
-
-        return concat (
+        return concat(
                 get(() ->
-                        pathPrefix("item", () ->
-                                path(longSegment(), (Long id) -> {
-                                    final CompletionStage<Optional<String>> futureMaybeItem = fetchItem(id);
-                                    return onSuccess(futureMaybeItem, maybeItem ->
-                                            maybeItem.map(item -> completeOK(item, Jackson.marshaller()))
-                                                    .orElseGet(() -> complete(StatusCodes.NOT_FOUND, "Not Found"))
-                                    );
+                        pathPrefix("Akka", () ->
+                                path(Segment -> {
+                                    Path path = Paths.get("Database/" + Segment);
+                                    return getResult(path);
                                 }))),
                 post(() ->
-                        path("create-order", () ->
+                        pathPrefix("Akka" , () ->
+                        path(Segment ->
                                 entity(Jackson.unmarshaller(String.class), order -> {
-                                    try{
-                                        fileWriter.write("IN POST PATH");
+                                    CompletionStage<Done> futureSaved = null;
+                                    try {
+                                        futureSaved = saveOrder(order, Segment);
                                     }catch(IOException e){
-                                        complete(e.getMessage());
 
-                                    }CompletionStage<Done> futureSaved = saveOrder(order);
-                                    postedFiles.put(1, order);
-                                    return complete("order created");
-                                })))
-        );
-    }
-/*
-    private static class Item {
-
-        final String name;
-        final long id;
-
-        @JsonCreator
-        Item(@JsonProperty("name") String name,
-             @JsonProperty("id") long id) {
-            this.name = name;
-            this.id = id;
+                                    }
+                                    return onSuccess(futureSaved, done ->
+                                            complete("order created")
+                                    );
+                                }
+                        )
+                )
+                        )
+            ));
         }
-
-        public String getName() {
-            return name;
-        }
-
-        public long getId() {
-            return id;
-        }
-    }
-
-    private static class Order {
-
-        final List<Item> items;
-
-        @JsonCreator
-        Order(@JsonProperty("items") List<Item> items) {
-            this.items = items;
-        }
-
-        public List<Item> getItems() {
-            return items;
-        }
-    }
-    */
 }
